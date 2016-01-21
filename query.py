@@ -74,10 +74,11 @@ class Filter(Sqlite_Helper):
 	
 
 class Population_Query(Sqlite_Helper):
-	def __init__(self,query, FCC_db,FCC_db_name, db, db_name = "",vars = []):	
+	def __init__(self,db, db_name, coordinates = (0.0,0.0), vars = []):	
 		super(Population_Query,self).__init__(db,db_name)
-		self.station_vector = self.get_station_vector(query,FCC_db,FCC_db_name)
 		self.conn,self.cursor = Sqlite_Helper.set_db(self)
+		assert(isinstance(coordinates,tuple))
+		self.coordinates = coordinates
 		self.search_hits = {}
 		self.population_dict = {}
 		self.db_name = db_name
@@ -87,18 +88,10 @@ class Population_Query(Sqlite_Helper):
 		self.census_tract_area = []
 		self.correct_area = []
 	
-	def query_tracts(self):
-		query_length = len(self.station_vector)
-		
-		for i,station in enumerate(self.station_vector):
-			station_dictionary = self.station_vector[station]
-			latitude = station_dictionary['trans_lat']
-			longitude = station_dictionary['trans_lon']
-			average_radius = station_dictionary['average reach']
-			self.search_hits.update(self.search(latitude,longitude,average_radius))
-			
-			if i > 0 and i % 1000 == 0:
-				print (float(i) / query_length) * 100
+	def query_tracts(self,radius):
+
+		latitude,longitude = self.coordinates
+		self.search_hits.update(self.search(latitude,longitude,radius))
 		
 # 		calculate some statistics		
 		print 'area',np.average(self.area_error)
@@ -112,16 +105,16 @@ class Population_Query(Sqlite_Helper):
 		
 		return self.search_hits
 	
-	def search(self,latitude,longitude,average_radius):
+	def search(self,latitude,longitude,radius):
 		sql_string = ("SELECT * FROM {tn} "
-			"WHERE HAVERSINE({latitude},{longitude},INTPTLAT10,INTPTLON10) <= {ar}")
+			"WHERE HAVERSINE({latitude},{longitude},INTPTLAT10,INTPTLON10) <= {r}")
 		
 		search_hits = {}
 		area = 0.0
 		
 		while not search_hits:
 			self.cursor.execute(sql_string.format(tn = self.db_name,latitude = latitude,
-				longitude = longitude, ar = average_radius))
+				longitude = longitude, r = radius))
 			results = self.cursor.fetchall()
 			
 			if results:
@@ -133,15 +126,15 @@ class Population_Query(Sqlite_Helper):
 # 				calculate some area statistics
 				area = area / 1000.0
 				correct_radius = math.sqrt((area/math.pi))
-				exact = math.pi * ((average_radius) ** 2)
+				exact = math.pi * ((radius) ** 2)
 				self.census_tract_area.append(area)
 				self.correct_area.append(exact)
-				self.radius_error.append(correct_radius/average_radius)
+				self.radius_error.append(correct_radius/radius)
 				self.area_error.append(abs(exact - area))
 # 				print exact - area
 			
-			average_radius += 5
-			if average_radius > 100:
+			radius += 5
+			if radius > 100:
 				break
 
 		return search_hits
@@ -172,32 +165,6 @@ class Population_Query(Sqlite_Helper):
 			self.population_dict[demographic] = str(total)
 		
 		return self.population_dict
-	
-	def get_station_vector(self,query,FCC_db,FCC_db_name):
-		SH = Sqlite_Helper(FCC_db,FCC_db_name)
-		conn,cursor = SH.set_db()
-		stations = {}
-		
-		for callsign in query:
-			cursor.execute("SELECT * FROM {tn} WHERE callsign = '{callsign}'".\
-				format(tn = FCC_db_name,callsign = callsign))
-			results = cursor.fetchall()
-			
-			if results:
-				results = results[0]
-				type = results['type'].encode('ASCII')
-				trans_lat = results['trans_lat']
-				trans_lon = results['trans_lon']
-				if type == 'FM':
-					reach_lats,reach_lons = Sqlite_Helper.get_reach_vector(self,results)
-					average_reach = Sqlite_Helper.get_average_reach(self,trans_lat,trans_lon,reach_lats,reach_lons)
-				else:
-					average_reach = 50
-				stations[results['callsign'].encode('ASCII')] = {'trans_lat':trans_lat,'trans_lon':trans_lon,'average reach':average_reach}
-		
-		conn.close()
-		
-		return stations
 	
 	def get_vars(self,vars):
 		
@@ -233,25 +200,42 @@ class Population_Query(Sqlite_Helper):
 		if self.search_hits:
 			return self.search_hits
 	
-	def print_search_hits(self,csv,sep = '|'):
-		if csv:
-			csv = open(csv,'w')
-			csv.write('callsign' + sep + sep.join(self.vars) + '\n')
+	def print_search_hits(self,csv,all_vars = False,sep = '|'):
+		dir = os.path.dirname(csv)
+		query_basename = 'query_' + os.path.basename(csv)
+		query_path = os.path.join(dir,query_basename)
+		q = open(query_path,'w')
 
-		for station in self.search_hits:
-			row = self.search_hits[station]
-			line = [station]
-			for datum in station:
+		if all_vars:
+			print_vars = Sqlite_Helper.all_variables(self)
+		else:
+			print_vars = self.vars
+		
+		csv = open(csv,'w')
+		csv.write('tract' + sep + sep.join(print_vars) + '\n')
+		q.write('tract' + sep + sep.join(print_vars) + '\n')
+		query = '|'.join(['query','|'.join(['-']*4),str(self.coordinates[0]),
+			str(self.coordinates[1]),'|'.join(['0.0']*(len(print_vars)-7))]) + '\n'
+
+		csv.write(query)
+		q.write(query)
+		q.close()
+		for tract in self.search_hits:
+			row = self.search_hits[tract]
+			line = [tract]
+
+			for datum in self.search_hits[tract]:
 				line.append(str(datum))
+
 			csv.write(sep.join(line) + '\n')
 
 
 class Query(Sqlite_Helper):
-	def __init__(self,RC_db, RC_table_name,secondary_db = "",secondary_table_name = ""):
-		super(Query,self).__init__(RC_db,RC_table_name)
+	def __init__(self,db, table_name,secondary_db = "",secondary_table_name = ""):
+		super(Query,self).__init__(db,table_name)
 
 		self.conn, self.cursor = Sqlite_Helper.set_db(self)
-		self.query_N = self.cursor.execute("SELECT count(*) FROM {tn}".format(tn = RC_table_name))
+		self.query_N = self.cursor.execute("SELECT count(*) FROM {tn}".format(tn = table_name))
 		
 		self.results_path = ""
 		self.description_path = ""
