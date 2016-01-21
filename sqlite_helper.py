@@ -14,9 +14,9 @@ class Sqlite_Helper(object):
 		self.edu_patterns = {}
 	
 	def create(self,header):
-		connection = sdb.connect(self.sqlite_path)
+		connection = sqlite3.connect(self.sqlite_path)
 		cursor = connection.cursor()
-		print header
+		
 		cursor.execute("CREATE TABLE {tn} ({hd})".\
 			format(tn = self.table_name,hd = header))
 		
@@ -25,14 +25,20 @@ class Sqlite_Helper(object):
 	
 	def insert_rows(self,length,rows):
 
-		holders = '(' + ','.join(['?']*length) + ')'
+		holders = ','.join(['?']*length)
 		
-		sql = "INSERT OR IGNORE INTO " + self.table_name + " VALUES " + holders
+		sql = "INSERT OR REPLACE INTO " + self.table_name + " VALUES (" + holders + ")" 
 		
 		for row in rows:
+				
+			row_len = len(row)
+			if row_len == 1:
+				break
+			
 			self.cursor.execute(sql,row)
 		
 		self.connection.commit()
+		self.connection.close()
 	
 	def set_db(self):
 		self.conn = sdb.connect(self.sqlite_path)
@@ -363,6 +369,12 @@ class Sqlite_Helper(object):
 		average_reach = total_distance/vectors
 		
 		return average_reach
+	
+	def all_variables(self):
+		self.cursor.execute("PRAGMA table_info({tn})".format(tn = self.table_name))
+		vars = [dscr[1] for dscr in self.cursor.fetchall()]
+
+		return vars
 
 class Recursive_Cursor(Sqlite_Helper):
 	def __init__(self,db,table_name):
