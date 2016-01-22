@@ -9,6 +9,8 @@ Dependencies:
 https://github.com/thampiman/reverse-geocoder
 -	haversine
 https://github.com/mapado/haversine
+-	geopy
+https://github.com/geopy/geopy
 
 Here are the flags and definitions:
 	
@@ -19,11 +21,9 @@ Here are the flags and definitions:
 	--sql - statement executed by query interpreter
 	--description - add description to csv file
 
-	--population_query - get demographic totals for the queried callsigns. It could be a list
-		or could be a file with callsigns where there is one callsign per line and it
-		is the first item when the line is split by commas.
-		python radio_census.py --population_query WNYC-FM,WTHO-FM
-		python radio_census.py --population_query path/to/callsigns.txt
+	--population_query - get demographic totals for the the census tracts within a certain radius of either an adress or a pair of latitude/longitude coordinates
+		python census.py --csv "path/to/your_file.csv" --population_query "309 Lee Street, Thomson, Georgia" --radius 10
+		python census.py --std_out --population_query -33,82 --radius 50
 	--pq_variable- select demographic totals for this variable.
 
 	--percentile - percentile for condition
