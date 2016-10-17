@@ -54,7 +54,7 @@ def main():
 		census = Census(target_dir,data_dir)
 		print args.sql
 		if args.sql:
-			from sqlite_tools.query import Query
+			from query import Query
 			census.set_dbs()
 			query = Query(census.census_db,census.census_table_name)
 			if os.path.exists(args.sql):
@@ -71,7 +71,7 @@ def main():
 	
 	if args.population_query:
 		
-		from sqlite_tools.query import Filter,Population_Query
+		from query import Filter,Population_Query
 		from geopy.geocoders import Nominatim
 		
 		census = Census(target_dir,data_dir)
@@ -106,10 +106,5 @@ def main():
 		if args.csv:
 			pq.print_search_hits(args.csv,all_vars = True)
 			
-	if args.d2:
-		from demographics_and_distance import demographics_and_distance as D2
-		d2 = D2(target_dir,data_dir)
-		d2.query_tracts_by_stations(demographics = args.d2_variable,percentile = args.percentile,csv = args.csv)
-
 if __name__ == "__main__":
     main()
